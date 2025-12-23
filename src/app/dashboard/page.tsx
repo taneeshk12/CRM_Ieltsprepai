@@ -83,7 +83,6 @@ export default function DashboardPage() {
         revenueData,
         essayBandsData,
         testBandsData,
-        activeUsersData,
       ] = await Promise.all([
         // Basic counts
         supabase.from('users').select('*', { count: 'exact', head: true }),
@@ -104,16 +103,15 @@ export default function DashboardPage() {
         supabase.from('users').select('*', { count: 'exact', head: true }).gte('created_at', today.toISOString()),
         supabase.from('users').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo.toISOString()),
 
-        // Revenue data
-        supabase.from('user_payments').select('amount').eq('status', 'completed'),
+        // Revenue data - get all payments (we'll filter by status in calculation)
+        supabase.from('user_payments').select('amount, status'),
 
         // Performance data
         supabase.from('user_essays').select('band'),
         supabase.from('user_full_writing_tests').select('overall_band'),
 
-        // Active users (users with activity in last 30 days)
-        supabase.from('users').select('*', { count: 'exact', head: true })
-          .or(`created_at.gte.${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()},user_essays.created_at.gte.${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()},user_full_writing_tests.created_at.gte.${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()}`),
+        // Get all users (we'll calculate active users separately)
+        supabase.from('users').select('id').eq('is_deleted', false),
       ])
 
       // Calculate total credits
@@ -122,8 +120,16 @@ export default function DashboardPage() {
       const usersWithoutCredits = (users || 0) - creditsArray.length
       const totalCredits = creditsFromTable + (usersWithoutCredits * 2)
 
-      // Calculate revenue metrics
-      const totalRevenue = revenueData?.data?.reduce((sum: number, payment: { amount: number }) => sum + (payment.amount || 0), 0) || 0
+      // Calculate revenue metrics - properly parse amount and filter by completed status
+      const completedPayments = revenueData?.data?.filter((p: { status: string }) => 
+        p.status === 'completed' || p.status === 'succeeded' || p.status === 'paid'
+      ) || []
+      
+      const totalRevenue = completedPayments.reduce((sum: number, payment: { amount: string | number }) => {
+        const amount = typeof payment.amount === 'string' ? parseFloat(payment.amount) : payment.amount
+        return sum + (isNaN(amount) ? 0 : amount)
+      }, 0)
+      
       const avgRevenuePerUser = users && users > 0 ? totalRevenue / users : 0
       const conversionRate = users && users > 0 ? ((payments || 0) / users) * 100 : 0
 
@@ -137,8 +143,32 @@ export default function DashboardPage() {
       const totalActivities = (essays || 0) + (tests || 0) + (readingTests || 0) + (speakingTests || 0)
       const completionRate = totalActivities > 0 ? ((essays || 0) + (tests || 0)) / totalActivities * 100 : 0
 
-      // Calculate user retention (simplified - users active in last 30 days)
-      const userRetention = users && users > 0 ? ((activeUsersData?.count || 0) / users) * 100 : 0
+      // Calculate active users (users with activity in last 30 days)
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const [
+        recentEssays,
+        recentTests,
+        recentReading,
+        recentSpeaking,
+        recentUsers
+      ] = await Promise.all([
+        supabase.from('user_essays').select('user_id').gte('created_at', thirtyDaysAgo.toISOString()),
+        supabase.from('user_full_writing_tests').select('user_id').gte('created_at', thirtyDaysAgo.toISOString()),
+        supabase.from('user_reading').select('user_id').gte('created_at', thirtyDaysAgo.toISOString()),
+        supabase.from('user_speaking').select('user_id').gte('created_at', thirtyDaysAgo.toISOString()),
+        supabase.from('users').select('id').gte('created_at', thirtyDaysAgo.toISOString()).eq('is_deleted', false)
+      ])
+
+      // Collect unique active user IDs
+      const activeUserIds = new Set<string>()
+      recentEssays.data?.forEach(e => e.user_id && activeUserIds.add(e.user_id))
+      recentTests.data?.forEach(t => t.user_id && activeUserIds.add(t.user_id))
+      recentReading.data?.forEach(r => r.user_id && activeUserIds.add(r.user_id))
+      recentSpeaking.data?.forEach(s => s.user_id && activeUserIds.add(s.user_id))
+      recentUsers.data?.forEach(u => u.id && activeUserIds.add(u.id))
+
+      const activeUsersCount = activeUserIds.size
+      const userRetention = users && users > 0 ? (activeUsersCount / users) * 100 : 0
 
       setStats({
         users: users || 0,
@@ -146,7 +176,7 @@ export default function DashboardPage() {
         essays: essays || 0,
         tests: tests || 0,
         credits: totalCredits,
-        activeUsers: activeUsersData?.count || 0,
+        activeUsers: activeUsersCount,
         newUsersToday: newUsersTodayData?.count || 0,
         newUsersWeek: newUsersWeekData?.count || 0,
         userRetention,
@@ -285,12 +315,20 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <h1 className="text-3xl font-bold text-gray-900">IELTS Admin Analytics Dashboard</h1>
-            <button
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md"
-            >
-              Logout
-            </button>
+            <div className="flex gap-4">
+              <a
+                href="/analytics"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md"
+              >
+                Advanced Analytics
+              </a>
+              <button
+                onClick={handleLogout}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -301,10 +339,10 @@ export default function DashboardPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Key Performance Indicators</h2>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/active-users" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">U</span>
                       </div>
@@ -326,17 +364,17 @@ export default function DashboardPage() {
                 </div>
                 <div className="bg-gray-50 px-5 py-3">
                   <div className="text-sm">
-                    <a href="/users" className="font-medium text-indigo-700 hover:text-indigo-900">
-                      View all users →
-                    </a>
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
                   </div>
                 </div>
-              </div>
+              </a>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/revenue" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">$</span>
                       </div>
@@ -358,17 +396,17 @@ export default function DashboardPage() {
                 </div>
                 <div className="bg-gray-50 px-5 py-3">
                   <div className="text-sm">
-                    <a href="/payments" className="font-medium text-indigo-700 hover:text-indigo-900">
-                      View payments →
-                    </a>
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
                   </div>
                 </div>
-              </div>
+              </a>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/retention" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">A</span>
                       </div>
@@ -388,12 +426,19 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+                <div className="bg-gray-50 px-5 py-3">
+                  <div className="text-sm">
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
+                  </div>
+                </div>
+              </a>
 
               <div className="bg-white overflow-hidden shadow rounded-lg">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">C</span>
                       </div>
@@ -502,10 +547,10 @@ export default function DashboardPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Feature Usage</h2>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/essays" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">E</span>
                       </div>
@@ -527,17 +572,17 @@ export default function DashboardPage() {
                 </div>
                 <div className="bg-gray-50 px-5 py-3">
                   <div className="text-sm">
-                    <a href="/essays" className="font-medium text-indigo-700 hover:text-indigo-900">
-                      View essays →
-                    </a>
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
                   </div>
                 </div>
-              </div>
+              </a>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/full-tests" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">T</span>
                       </div>
@@ -559,17 +604,17 @@ export default function DashboardPage() {
                 </div>
                 <div className="bg-gray-50 px-5 py-3">
                   <div className="text-sm">
-                    <a href="/tests" className="font-medium text-indigo-700 hover:text-indigo-900">
-                      View tests →
-                    </a>
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
                   </div>
                 </div>
-              </div>
+              </a>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/reading" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">R</span>
                       </div>
@@ -589,12 +634,19 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+                <div className="bg-gray-50 px-5 py-3">
+                  <div className="text-sm">
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
+                  </div>
+                </div>
+              </a>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/speaking" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">S</span>
                       </div>
@@ -614,7 +666,14 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+                <div className="bg-gray-50 px-5 py-3">
+                  <div className="text-sm">
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
+                  </div>
+                </div>
+              </a>
             </div>
           </div>
 
@@ -622,10 +681,10 @@ export default function DashboardPage() {
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Trial & Free Usage</h2>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/trials" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-indigo-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">T</span>
                       </div>
@@ -645,12 +704,19 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+                <div className="bg-gray-50 px-5 py-3">
+                  <div className="text-sm">
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
+                  </div>
+                </div>
+              </a>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg">
+              <a href="/analytics/free-attempts" className="bg-white overflow-hidden shadow rounded-lg hover:shadow-xl transition-shadow cursor-pointer">
                 <div className="p-5">
                   <div className="flex items-center">
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <div className="w-8 h-8 bg-teal-500 rounded-md flex items-center justify-center">
                         <span className="text-white font-bold">F</span>
                       </div>
@@ -670,7 +736,14 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+                <div className="bg-gray-50 px-5 py-3">
+                  <div className="text-sm">
+                    <span className="font-medium text-indigo-700 hover:text-indigo-900">
+                      View detailed analytics →
+                    </span>
+                  </div>
+                </div>
+              </a>
             </div>
           </div>
 
