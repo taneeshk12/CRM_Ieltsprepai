@@ -262,7 +262,7 @@ export default function DashboardPage() {
         activities.push({
           id: `payment-${payment.id}`,
           type: 'payment',
-          description: `Payment of $${payment.amount} by ${user?.name || user?.email || 'Unknown user'}`,
+          description: `Payment of ₹${payment.amount} by ${user?.name || user?.email || 'Unknown user'}`,
           timestamp: payment.created_at,
         })
       })
@@ -321,6 +321,12 @@ export default function DashboardPage() {
                 className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md"
               >
                 Advanced Analytics
+              </a>
+              <a
+                href="/blog"
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md"
+              >
+                Blog Management
               </a>
               <button
                 onClick={handleLogout}
@@ -385,10 +391,10 @@ export default function DashboardPage() {
                           Total Revenue
                         </dt>
                         <dd className="text-lg font-medium text-gray-900">
-                          ${stats?.totalRevenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₹{stats?.totalRevenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </dd>
                         <dd className="text-sm text-green-600">
-                          ${stats?.avgRevenuePerUser?.toFixed(2)}/user
+                          ₹{stats?.avgRevenuePerUser?.toFixed(2)}/user
                         </dd>
                       </dl>
                     </div>
