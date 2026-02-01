@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import FreeModeToggle from '@/components/FreeModeToggle'
 
 interface DashboardStats {
   // Basic counts
@@ -865,6 +866,11 @@ export default function DashboardPage() {
                 </div>
               </a>
             </div>
+          </div>
+
+          {/* Free Mode Control */}
+          <div className="mb-8">
+            <FreeModeToggle />
           </div>
         </div>
       </main>
