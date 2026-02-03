@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import Image from 'next/image'
 
 interface BlogPost {
   id: string
@@ -17,6 +18,25 @@ interface BlogPost {
   tags: string[]
   created_at: string
   updated_at: string
+  // SEO fields
+  meta_title?: string
+  meta_description?: string
+  focus_keyword?: string
+  canonical_url?: string
+  og_image_url?: string
+  reading_time?: number
+  word_count?: number
+  seo_score?: number
+  category?: string
+  featured?: boolean
+  views?: number
+  last_updated?: string
+}
+
+type UpdatePayload = {
+  is_published?: boolean
+  published_at?: string | null
+  updated_at?: string
 }
 
 export default function BlogManagement() {
@@ -67,7 +87,7 @@ export default function BlogManagement() {
 
   const handleTogglePublish = async (id: string, currentStatus: boolean) => {
     try {
-      const updateData: any = {
+      const updateData: UpdatePayload = {
         is_published: !currentStatus,
         updated_at: new Date().toISOString()
       }
@@ -199,107 +219,46 @@ export default function BlogManagement() {
           </div>
 
           {/* Blog Posts List */}
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Title
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Author
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tags
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredPosts.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                      No blog posts found. Create your first blog post!
-                    </td>
-                  </tr>
-                ) : (
-                  filteredPosts.map((post) => (
-                    <tr key={post.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{post.title}</div>
-                        <div className="text-sm text-gray-500 truncate max-w-md">{post.description}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {post.author}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          post.is_published 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {post.is_published ? 'Published' : 'Draft'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-wrap gap-1">
-                          {post.tags.slice(0, 3).map((tag, idx) => (
-                            <span key={idx} className="px-2 py-1 text-xs bg-indigo-100 text-indigo-800 rounded">
-                              {tag}
-                            </span>
-                          ))}
-                          {post.tags.length > 3 && (
-                            <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
-                              +{post.tags.length - 3}
-                            </span>
-                          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {filteredPosts.length === 0 ? (
+              <div className="bg-white p-6 rounded-lg shadow text-center text-gray-500">No blog posts found. Create your first blog post!</div>
+            ) : (
+              filteredPosts.map(post => (
+                <div key={post.id} className={`bg-white rounded-lg shadow p-6 hover:shadow-lg transition relative ${post.featured ? 'border-2 border-amber-300' : ''}`}>
+                  <div className="flex items-start gap-4">
+                    {post.image_url && (
+                      <div className="hidden sm:block w-20 h-20 relative">
+                        <Image src={post.image_url} alt={post.title} fill className="object-cover rounded-md" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-lg font-semibold text-gray-900">{post.title}</h3>
+                        <div className="flex items-center gap-2">
+                          {post.featured && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Featured</span>}
+                          <span className={`text-xs px-2 py-1 rounded ${post.is_published ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{post.is_published ? 'Published' : 'Draft'}</span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {post.published_at 
-                          ? new Date(post.published_at).toLocaleDateString()
-                          : new Date(post.created_at).toLocaleDateString()
-                        }
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex gap-2">
-                          <Link
-                            href={`/blog/edit/${post.id}`}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            Edit
-                          </Link>
-                          <button
-                            onClick={() => handleTogglePublish(post.id, post.is_published)}
-                            className={`${
-                              post.is_published 
-                                ? 'text-yellow-600 hover:text-yellow-900' 
-                                : 'text-green-600 hover:text-green-900'
-                            }`}
-                          >
-                            {post.is_published ? 'Unpublish' : 'Publish'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(post.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Delete
-                          </button>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-2 truncate">{post.description}</p>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <span>{post.author}</span>
+                          <span>•</span>
+                          <span>{post.category || 'Guide'}</span>
+                          <span>•</span>
+                          <span>{post.views ?? 0} views</span>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                        <div className="flex items-center gap-3 text-sm">
+                          <Link href={`/blog/edit/${post.id}`} className="text-indigo-600 hover:text-indigo-900">Edit</Link>
+                          <button onClick={() => handleTogglePublish(post.id, post.is_published)} className={`${post.is_published ? 'text-yellow-600 hover:text-yellow-900' : 'text-green-600 hover:text-green-900'}`}>{post.is_published ? 'Unpublish' : 'Publish'}</button>
+                          <button onClick={() => handleDelete(post.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </main>

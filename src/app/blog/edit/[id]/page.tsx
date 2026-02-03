@@ -5,6 +5,29 @@ import { supabase } from '@/lib/supabase'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 
+type BlogUpdatePayload = {
+  title: string
+  slug: string
+  description: string
+  content: string
+  author: string
+  image_url: string | null
+  tags: string[]
+  is_published: boolean
+  updated_at: string
+  meta_title: string
+  meta_description: string
+  focus_keyword: string | null
+  canonical_url: string
+  og_image_url: string | null
+  reading_time: number
+  word_count: number
+  seo_score: number
+  category: string
+  featured: boolean
+  published_at?: string
+}
+
 export default function EditBlogPost() {
   const router = useRouter()
   const params = useParams()
@@ -20,41 +43,61 @@ export default function EditBlogPost() {
     author: 'IELTSPrepAI',
     image_url: '',
     tags: '',
-    is_published: false
+    is_published: false,
+    // SEO fields
+    meta_title: '',
+    meta_description: '',
+    focus_keyword: '',
+    canonical_url: '',
+    og_image_url: '',
+    reading_time: 5,
+    word_count: 0,
+    seo_score: 0,
+    category: 'Guide',
+    featured: false
   })
 
   useEffect(() => {
-    fetchPost()
-  }, [postId])
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('blog_posts')
+          .select('*')
+          .eq('id', postId)
+          .single()
 
-  const fetchPost = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('blog_posts')
-        .select('*')
-        .eq('id', postId)
-        .single()
+        if (error) throw error
 
-      if (error) throw error
-
-      setFormData({
-        title: data.title,
-        slug: data.slug,
-        description: data.description,
-        content: data.content,
-        author: data.author || 'IELTSPrepAI',
-        image_url: data.image_url || '',
-        tags: data.tags.join(', '),
-        is_published: data.is_published
-      })
-    } catch (error) {
-      console.error('Error fetching blog post:', error)
-      alert('Failed to load blog post')
-      router.push('/blog')
-    } finally {
-      setLoading(false)
-    }
-  }
+        setFormData({
+          title: data.title,
+          slug: data.slug,
+          description: data.description,
+          content: data.content,
+          author: data.author || 'IELTSPrepAI',
+          image_url: data.image_url || '',
+          tags: data.tags.join(', '),
+          is_published: data.is_published,
+          // SEO fields
+          meta_title: data.meta_title || data.title || '',
+          meta_description: data.meta_description || data.description || '',
+          focus_keyword: data.focus_keyword || '',
+          canonical_url: data.canonical_url || '',
+          og_image_url: data.og_image_url || data.image_url || '',
+          reading_time: data.reading_time || 5,
+          word_count: data.word_count || (data.content ? data.content.split(/\s+/).length : 0),
+          seo_score: data.seo_score || 0,
+          category: data.category || 'Guide',
+          featured: data.featured || false
+        })
+      } catch (err) {
+        console.error('Error fetching blog post:', err)
+        alert('Failed to load blog post')
+        router.push('/blog')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [postId, router])
 
   const generateSlug = (title: string) => {
     return title
@@ -81,7 +124,7 @@ export default function EditBlogPost() {
         .map(tag => tag.trim())
         .filter(tag => tag.length > 0)
 
-      const updateData: any = {
+  const updateData: BlogUpdatePayload = {
         title: formData.title,
         slug: formData.slug,
         description: formData.description,
@@ -90,7 +133,18 @@ export default function EditBlogPost() {
         image_url: formData.image_url || null,
         tags: tagsArray,
         is_published: formData.is_published,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        // SEO fields
+        meta_title: formData.meta_title || formData.title,
+        meta_description: formData.meta_description || formData.description.slice(0, 160),
+        focus_keyword: formData.focus_keyword || null,
+        canonical_url: formData.canonical_url || `https://ieltsprepai.tech/blog/${formData.slug}`,
+        og_image_url: formData.og_image_url || formData.image_url || null,
+        reading_time: Math.max(5, Math.round((formData.content || '').split(/\s+/).length / 200)),
+        word_count: (formData.content || '').split(/\s+/).filter(Boolean).length,
+        seo_score: formData.seo_score || 0,
+        category: formData.category || 'Guide',
+        featured: formData.featured || false
       }
 
       // Set published_at if publishing for the first time
@@ -115,12 +169,13 @@ export default function EditBlogPost() {
 
       alert('Blog post updated successfully!')
       router.push('/blog')
-    } catch (error: any) {
+    } catch (err) {
+      const error = err as { code?: string; message?: string }
       console.error('Error updating blog post:', error)
       if (error.code === '23505') {
         alert('A blog post with this slug already exists. Please use a different slug.')
       } else {
-        alert('Failed to update blog post: ' + error.message)
+        alert('Failed to update blog post: ' + (error.message ?? String(error)))
       }
     } finally {
       setSaving(false)
@@ -270,6 +325,67 @@ export default function EditBlogPost() {
               <label htmlFor="is_published" className="ml-2 block text-sm text-gray-900">
                 Published
               </label>
+            </div>
+
+            {/* Meta Title */}
+            <div>
+              <label htmlFor="meta_title" className="block text-sm font-medium text-gray-900 mb-2">Meta Title</label>
+              <input
+                id="meta_title"
+                value={formData.meta_title}
+                onChange={(e) => setFormData({ ...formData, meta_title: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
+                placeholder="SEO title (50-60 chars recommended)"
+              />
+            </div>
+
+            {/* Meta Description */}
+            <div>
+              <label htmlFor="meta_description" className="block text-sm font-medium text-gray-900 mb-2">Meta Description</label>
+              <textarea
+                id="meta_description"
+                value={formData.meta_description}
+                onChange={(e) => setFormData({ ...formData, meta_description: e.target.value })}
+                rows={2}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
+                placeholder="SEO meta description (155-160 chars recommended)"
+              />
+            </div>
+
+            {/* Focus Keyword */}
+            <div>
+              <label htmlFor="focus_keyword" className="block text-sm font-medium text-gray-900 mb-2">Focus Keyword</label>
+              <input
+                id="focus_keyword"
+                value={formData.focus_keyword}
+                onChange={(e) => setFormData({ ...formData, focus_keyword: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
+                placeholder="Primary keyword to target"
+              />
+            </div>
+
+            {/* Category & Featured */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="category" className="block text-sm font-medium text-gray-900 mb-2">Category</label>
+                <input
+                  id="category"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 bg-white"
+                />
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="featured"
+                  checked={formData.featured}
+                  onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label htmlFor="featured" className="ml-2 block text-sm text-gray-900">Feature on homepage</label>
+              </div>
             </div>
 
             {/* Actions */}
