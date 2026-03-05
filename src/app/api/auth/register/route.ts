@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import bcrypt from 'bcryptjs'
 
 export async function POST(request: Request) {
   try {
@@ -27,9 +26,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Hash password
-    const saltRounds = 10
-    const password_hash = await bcrypt.hash(password, saltRounds)
+    // Store password as plain text
+    const password_hash = password
 
     // Create new admin user
     const { data: newUser, error } = await supabase

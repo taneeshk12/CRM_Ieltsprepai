@@ -15,10 +15,13 @@ CREATE TABLE IF NOT EXISTS admin_users (
 -- Insert default admin user with hashed password
 -- Default credentials: username: admin, password: adminielts123
 -- Password hash for 'adminielts123' using bcrypt
+-- Insert an admin user with plaintext credentials (insecure - for local/dev only)
+-- Username: admin
+-- Password: adminielts1234
 INSERT INTO admin_users (username, password_hash, email, full_name)
 VALUES (
   'admin',
-  '$2a$10$YourHashWillGoHere', -- This will be updated by the setup script
+  'adminielts1234',
   'admin@ieltsprepai.com',
   'System Administrator'
 ) ON CONFLICT (username) DO NOTHING;
